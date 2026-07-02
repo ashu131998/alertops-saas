@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.next/
+.expo/
+*.env
+.env.local
+.env.production
+!.env.example
+prisma/dev.db
+*.sqlite
+*.log
+.DS_Store
+coverage/

@@ -1,0 +1,309 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  SUPERVISOR
+  WORKER
+}
+
+enum MachineStatus {
+  ONLINE
+  OFFLINE
+  WARNING
+  CRITICAL
+  MAINTENANCE
+}
+
+enum AlertSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum AlertStatus {
+  OPEN
+  ACKNOWLEDGED
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum ActionType {
+  ACKNOWLEDGE
+  START_REPAIR
+  ESCALATE
+  RESOLVE
+  CLOSE
+  COMMENT
+}
+
+enum NotificationPlatform {
+  EXPO
+  FCM
+  APNS
+}
+
+// ─── Factories ───────────────────────────────────────────────────────────────
+
+model Factory {
+  id          String    @id @default(cuid())
+  name        String
+  location    String
+  timezone    String    @default("UTC")
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  users    User[]
+  machines Machine[]
+  alerts   Alert[]
+
+  @@index([deletedAt])
+  @@map("factories")
+}
+
+// ─── Users ───────────────────────────────────────────────────────────────────
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  role         Role      @default(WORKER)
+  isActive     Boolean   @default(true)
+  factoryId    String
+  avatarUrl    String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  factory            Factory              @relation(fields: [factoryId], references: [id])
+  sessions           Session[]
+  notificationTokens NotificationToken[]
+  alertActions       AlertAction[]
+  alertComments      AlertComment[]
+  auditLogs          AuditLog[]
+
+  @@index([email])
+  @@index([factoryId])
+  @@index([deletedAt])
+  @@map("users")
+}
+
+// ─── Sessions ─────────────────────────────────────────────────────────────────
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  refreshToken String   @unique
+  userAgent    String?
+  ipAddress    String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([refreshToken])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// ─── Machines ─────────────────────────────────────────────────────────────────
+
+model Machine {
+  id           String        @id @default(cuid())
+  name         String
+  serialNumber String        @unique
+  model        String?
+  location     String
+  factoryId    String
+  status       MachineStatus @default(OFFLINE)
+  lastSeenAt   DateTime?
+  metadata     Json?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  deletedAt    DateTime?
+
+  factory        Factory         @relation(fields: [factoryId], references: [id])
+  alerts         Alert[]
+  statusHistory  MachineStatusHistory[]
+
+  @@index([factoryId])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("machines")
+}
+
+model MachineStatusHistory {
+  id          String        @id @default(cuid())
+  machineId   String
+  status      MachineStatus
+  reason      String?
+  recordedAt  DateTime      @default(now())
+
+  machine Machine @relation(fields: [machineId], references: [id], onDelete: Cascade)
+
+  @@index([machineId])
+  @@index([recordedAt])
+  @@map("machine_status_history")
+}
+
+// ─── Alerts ───────────────────────────────────────────────────────────────────
+
+model Alert {
+  id          String        @id @default(cuid())
+  title       String
+  description String
+  severity    AlertSeverity
+  status      AlertStatus   @default(OPEN)
+  machineId   String
+  factoryId   String
+  isRead      Boolean       @default(false)
+  metadata    Json?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  resolvedAt  DateTime?
+  deletedAt   DateTime?
+
+  machine      Machine        @relation(fields: [machineId], references: [id])
+  factory      Factory        @relation(fields: [factoryId], references: [id])
+  timeline     AlertTimeline[]
+  actions      AlertAction[]
+  comments     AlertComment[]
+
+  @@index([factoryId])
+  @@index([machineId])
+  @@index([status])
+  @@index([severity])
+  @@index([isRead])
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@map("alerts")
+}
+
+model AlertTimeline {
+  id          String      @id @default(cuid())
+  alertId     String
+  eventType   String
+  description String
+  metadata    Json?
+  createdAt   DateTime    @default(now())
+
+  alert Alert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+
+  @@index([alertId])
+  @@index([createdAt])
+  @@map("alert_timeline")
+}
+
+model AlertAction {
+  id         String     @id @default(cuid())
+  alertId    String
+  userId     String
+  actionType ActionType
+  comment    String?
+  metadata   Json?
+  createdAt  DateTime   @default(now())
+
+  alert Alert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@index([alertId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("alert_actions")
+}
+
+model AlertComment {
+  id        String    @id @default(cuid())
+  alertId   String
+  userId    String
+  content   String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  alert Alert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@index([alertId])
+  @@index([deletedAt])
+  @@map("alert_comments")
+}
+
+// ─── Notification Tokens ──────────────────────────────────────────────────────
+
+model NotificationToken {
+  id        String               @id @default(cuid())
+  userId    String
+  token     String               @unique
+  platform  NotificationPlatform
+  isActive  Boolean              @default(true)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("notification_tokens")
+}
+
+// ─── Audit Logs ───────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  entityType String
+  entityId   String?
+  factoryId  String?
+  ipAddress  String?
+  userAgent  String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([factoryId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ─── Event Store ──────────────────────────────────────────────────────────────
+
+model EventStore {
+  id           String   @id @default(cuid())
+  sequence     BigInt   @default(autoincrement())
+  eventId      String   @unique
+  eventType    String
+  factoryId    String?
+  machineId    String?
+  alertId      String?
+  payload      Json
+  version      Int      @default(1)
+  processedAt  DateTime?
+  createdAt    DateTime @default(now())
+
+  @@index([sequence])
+  @@index([eventType])
+  @@index([factoryId])
+  @@index([createdAt])
+  @@map("event_store")
+}
