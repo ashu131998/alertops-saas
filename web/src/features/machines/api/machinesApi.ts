@@ -2,7 +2,7 @@ import { api } from '../../../lib/api';
 import type { Machine } from '../../../lib/types';
 
 export const machinesApi = {
-  list: async (params?: Record<string, string>) => {
+  list: async (params?: Record<string, string | undefined>) => {
     const { data } = await api.get<{ data: Machine[] }>('/machines', { params });
     return data.data;
   },
