@@ -78,13 +78,13 @@ export class AuthService {
     const accessToken = jwt.sign(
       { sub: user.id, email: user.email, role: user.role, factoryId: user.factoryId, type: 'access' },
       config.JWT_ACCESS_SECRET,
-      { expiresIn: config.JWT_ACCESS_EXPIRES_IN },
+      { expiresIn: config.JWT_ACCESS_EXPIRES_IN as any },
     );
 
     const refreshToken = jwt.sign(
       { sub: user.id, jti: uuidv4(), type: 'refresh' },
       config.JWT_REFRESH_SECRET,
-      { expiresIn: config.JWT_REFRESH_EXPIRES_IN },
+      { expiresIn: config.JWT_REFRESH_EXPIRES_IN as any },
     );
 
     return { accessToken, refreshToken, expiresIn: 15 * 60 };

@@ -88,7 +88,7 @@ export class AlertService {
   }
 
   async createAlert(dto: CreateAlertDto) {
-    const alert = await this.repo.create(dto);
+    const alert = await this.repo.create({ ...dto, metadata: dto.metadata as any });
 
     await eventBus.publish(
       eventBus.createEvent({

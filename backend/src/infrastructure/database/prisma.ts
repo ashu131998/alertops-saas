@@ -7,14 +7,10 @@ export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
     log: [
-      { emit: 'event', level: 'query' },
-      { emit: 'event', level: 'error' },
-      { emit: 'event', level: 'warn' },
+      { emit: 'stdout', level: 'error' },
+      { emit: 'stdout', level: 'warn' },
     ],
   });
-
-prisma.$on('error', (e) => logger.error({ err: e }, 'Prisma error'));
-prisma.$on('warn', (e) => logger.warn({ warn: e }, 'Prisma warning'));
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
 
