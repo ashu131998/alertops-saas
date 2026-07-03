@@ -9,6 +9,7 @@ jobs:
     name: Deploy AlertOps
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    environment: .env
 
     steps:
       - name: Checkout
