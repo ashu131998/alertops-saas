@@ -15,6 +15,7 @@ import { alertRouter } from './features/alerts/alert.routes';
 import { machineRouter } from './features/machines/machine.routes';
 import { factoryRouter } from './features/factories/factory.routes';
 import { notificationRouter } from './features/notifications/notification.routes';
+import { integrationRouter } from './features/integration/integration.routes';
 
 export function createApp() {
   const app = express();
@@ -73,6 +74,7 @@ export function createApp() {
   app.use('/api/v1/machines', machineRouter);
   app.use('/api/v1/factories', factoryRouter);
   app.use('/api/v1/notifications', notificationRouter);
+  app.use('/api/v1/integration', integrationRouter);
 
   // Error handling
   app.use(notFoundHandler);

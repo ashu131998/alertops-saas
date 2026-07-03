@@ -15,6 +15,8 @@ export class AlertController {
         machineId: req.query.machineId as string,
         search: req.query.search as string,
         unreadOnly: req.query.unreadOnly === 'true',
+        viewerId: req.user!.id,
+        viewerRole: req.user!.role,
       });
       res.json(result);
     } catch (err) {

@@ -94,7 +94,7 @@ export class AlertService {
       eventBus.createEvent({
         eventType: EventType.ALERT_CREATED,
         factoryId: alert.factoryId,
-        machineId: alert.machineId,
+        machineId: alert.machineId ?? undefined,
         alertId: alert.id,
         payload: {
           alertId: alert.id,
@@ -155,7 +155,7 @@ export class AlertService {
         eventBus.createEvent({
           eventType: EventType.ALERT_UPDATED,
           factoryId,
-          machineId: alert.machineId,
+          machineId: alert.machineId ?? undefined,
           alertId,
           payload: {
             alertId,

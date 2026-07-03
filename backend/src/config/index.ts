@@ -16,6 +16,8 @@ const envSchema = z.object({
   RATE_LIMIT_MAX: z.coerce.number().default(100),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   EXPO_ACCESS_TOKEN: z.string().optional(),
+  // Shared secret for the ESP-IoT query-api bridge (worker sync + alert notify).
+  INTEGRATION_API_KEY: z.string().min(16).optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

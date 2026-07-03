@@ -30,9 +30,12 @@ export interface AlertCreatedEvent extends BaseEvent {
     description: string;
     severity: string;
     status: string;
-    machineId: string;
+    machineId: string | null;
     machineName: string;
     factoryId: string;
+    // When non-empty, push only to these user ids (assigned workers) instead of
+    // broadcasting to the whole factory.
+    targetUserIds?: string[];
   };
 }
 

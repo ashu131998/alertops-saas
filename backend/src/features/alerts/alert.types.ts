@@ -18,6 +18,10 @@ export interface ListAlertsQuery {
   search?: string;
   cursor?: string;
   unreadOnly?: boolean;
+  // Viewer context: WORKERs only see alerts targeted to them (or untargeted
+  // factory-wide alerts); ADMIN/SUPERVISOR see everything in the factory.
+  viewerId?: string;
+  viewerRole?: string;
 }
 
 export interface TakeActionDto {

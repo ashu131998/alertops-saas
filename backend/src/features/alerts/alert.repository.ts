@@ -17,8 +17,27 @@ export class AlertRepository {
   constructor(private readonly db: PrismaClient) {}
 
   async findMany(factoryId: string, query: ListAlertsQuery) {
-    const { page = 1, limit = 20, status, severity, machineId, search, unreadOnly } = query;
+    const { page = 1, limit = 20, status, severity, machineId, search, unreadOnly, viewerId, viewerRole } = query;
     const skip = (page - 1) * limit;
+
+    // Combine scope (worker targeting) and search — both use OR internally, so
+    // they are ANDed together to avoid clobbering each other.
+    const and: Prisma.AlertWhereInput[] = [];
+
+    // Workers only see alerts targeted to them or factory-wide (untargeted)
+    // alerts. Supervisors/admins see the whole factory.
+    if (viewerRole === 'WORKER' && viewerId) {
+      and.push({ OR: [{ targetUserIds: { has: viewerId } }, { targetUserIds: { isEmpty: true } }] });
+    }
+    if (search) {
+      and.push({
+        OR: [
+          { title: { contains: search, mode: 'insensitive' } },
+          { description: { contains: search, mode: 'insensitive' } },
+          { machine: { name: { contains: search, mode: 'insensitive' } } },
+        ],
+      });
+    }
 
     const where: Prisma.AlertWhereInput = {
       factoryId,
@@ -27,13 +46,7 @@ export class AlertRepository {
       ...(severity && { severity }),
       ...(machineId && { machineId }),
       ...(unreadOnly && { isRead: false }),
-      ...(search && {
-        OR: [
-          { title: { contains: search, mode: 'insensitive' } },
-          { description: { contains: search, mode: 'insensitive' } },
-          { machine: { name: { contains: search, mode: 'insensitive' } } },
-        ],
-      }),
+      ...(and.length > 0 && { AND: and }),
     };
 
     const [alerts, total] = await Promise.all([
