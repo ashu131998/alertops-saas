@@ -20,7 +20,10 @@ const envSchema = z.object({
   // still boots without them; web push is simply skipped when unset.
   VAPID_PUBLIC_KEY: z.string().optional(),
   VAPID_PRIVATE_KEY: z.string().optional(),
-  VAPID_SUBJECT: z.string().default('mailto:alerts@alertops.local'),
+  // Apple's web push service strictly validates the VAPID `sub` claim and
+  // rejects non-routable domains like `.local` with 403 BadJwtToken. Must be a
+  // real https URL or a mailto: with a valid domain, or iOS push silently fails.
+  VAPID_SUBJECT: z.string().default('https://alertops.duckdns.org'),
   // Shared secret for the ESP-IoT query-api bridge (worker sync + alert notify).
   INTEGRATION_API_KEY: z.string().min(16).optional(),
   // Reverse callback: where to relay a worker's interactive reply back to the
