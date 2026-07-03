@@ -16,6 +16,11 @@ const envSchema = z.object({
   RATE_LIMIT_MAX: z.coerce.number().default(100),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   EXPO_ACCESS_TOKEN: z.string().optional(),
+  // Web Push (VAPID) — for the browser/PWA alert client. Optional so the server
+  // still boots without them; web push is simply skipped when unset.
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  VAPID_SUBJECT: z.string().default('mailto:alerts@alertops.local'),
   // Shared secret for the ESP-IoT query-api bridge (worker sync + alert notify).
   INTEGRATION_API_KEY: z.string().min(16).optional(),
   // Reverse callback: where to relay a worker's interactive reply back to the

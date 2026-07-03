@@ -6,7 +6,7 @@ import { validate } from '../../core/middleware/validate';
 
 const registerTokenSchema = z.object({
   token: z.string().min(1),
-  platform: z.enum(['EXPO', 'FCM', 'APNS']).default('EXPO'),
+  platform: z.enum(['EXPO', 'FCM', 'APNS', 'WEBPUSH']).default('EXPO'),
 });
 
 export const notificationRouter = Router();

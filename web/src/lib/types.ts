@@ -33,14 +33,29 @@ export interface AlertSummary {
   updatedAt: string;
 }
 
+export interface AlertReplyOption {
+  id: string;
+  label: string;
+  description?: string;
+}
+
+export interface AlertReplyMetadata {
+  kind?: 'downtime_reason' | 'config_selection';
+  prompt?: string;
+  options?: AlertReplyOption[];
+  [key: string]: unknown;
+}
+
 export interface AlertDetail extends AlertSummary {
   description: string;
-  machine: { id: string; name: string; location: string };
+  machine: { id: string; name: string; location: string } | null;
+  externalMachineName?: string | null;
   factory: { id: string; name: string };
   timeline: AlertTimelineEntry[];
   actions: AlertActionRecord[];
-  comments: AlertCommentRecord[];
+  comments?: AlertCommentRecord[];
   availableActions: AvailableAction[];
+  metadata?: AlertReplyMetadata | null;
 }
 
 export interface AlertTimelineEntry {
