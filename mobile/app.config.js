@@ -28,7 +28,17 @@ module.exports = {
     },
     plugins: [
       'expo-router',
+      'expo-system-ui',
       ['expo-notifications', { color: '#1d4ed8', sounds: [] }],
+      ['expo-build-properties', {
+        android: {
+          compileSdkVersion: 34,
+          targetSdkVersion: 34,
+          buildToolsVersion: '34.0.0',
+          kotlinVersion: '1.8.10',
+          extraMavenRepos: [],
+        },
+      }],
     ],
     experiments: { typedRoutes: true },
     scheme: 'alertops',
