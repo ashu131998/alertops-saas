@@ -33,6 +33,9 @@ module.exports = {
     experiments: { typedRoutes: true },
     scheme: 'alertops',
     extra: {
+      eas: {
+        projectId: 'beb22f3f-0b55-4b90-8d35-033ce5ccd9de',
+      },
       apiUrl: API_URL,
       wsUrl: WS_URL,
       appEnv: IS_DEV ? 'development' : 'production',
