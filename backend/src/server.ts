@@ -7,6 +7,7 @@ import { wsGateway } from './infrastructure/websocket/WebSocketGateway';
 import { registerWebSocketHandlers } from './core/events/handlers/WebSocketHandler';
 import { registerPushNotificationHandlers } from './core/events/handlers/PushNotificationHandler';
 import { registerAuditLogHandlers } from './core/events/handlers/AuditLogHandler';
+import { registerMachineDowntimeHandler } from './core/events/handlers/MachineDowntimeHandler';
 
 async function bootstrap() {
   await connectDatabase();
@@ -15,6 +16,7 @@ async function bootstrap() {
   registerWebSocketHandlers();
   registerPushNotificationHandlers();
   registerAuditLogHandlers();
+  registerMachineDowntimeHandler();
 
   const app = createApp();
   const server = http.createServer(app);
