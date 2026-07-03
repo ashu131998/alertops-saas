@@ -39,13 +39,16 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
  */
 export async function enablePush(): Promise<NotificationPermission | 'unsupported'> {
   if (!pushSupported()) return 'unsupported';
-  if (!VAPID_PUBLIC_KEY) {
-    console.warn('[push] NEXT_PUBLIC_VAPID_PUBLIC_KEY is not set');
-    return 'default';
-  }
 
+  // Ask for permission first — this is the action that triggers the browser
+  // dialog, regardless of whether we have VAPID keys yet.
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') return permission;
+
+  if (!VAPID_PUBLIC_KEY) {
+    console.warn('[push] NEXT_PUBLIC_VAPID_PUBLIC_KEY is not set — permission granted but subscription skipped');
+    return 'granted';
+  }
 
   const registration = (await navigator.serviceWorker.ready) as ServiceWorkerRegistration;
 

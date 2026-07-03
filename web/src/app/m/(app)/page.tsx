@@ -18,15 +18,37 @@ function PushBanner() {
   const [perm, setPerm] = useState<string>(() =>
     typeof window === 'undefined' ? 'default' : notificationPermission(),
   );
+  const [loading, setLoading] = useState(false);
+
   if (perm === 'granted' || perm === 'unsupported') return null;
+
+  if (perm === 'denied') {
+    return (
+      <div className="mx-4 mt-4 flex items-start gap-3 rounded-xl bg-orange-50 px-4 py-3">
+        <span className="text-xl">⚠️</span>
+        <p className="flex-1 text-xs leading-relaxed text-orange-700">
+          Notifications are blocked. Open Chrome settings → Site settings → Notifications → find this site → Allow.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <button
-      onClick={async () => setPerm(await enablePush())}
-      className="mx-4 mt-4 flex w-[calc(100%-2rem)] items-center gap-3 rounded-xl bg-blue-600 px-4 py-3 text-left text-white"
+      disabled={loading}
+      onClick={async () => {
+        setLoading(true);
+        const result = await enablePush();
+        setPerm(result);
+        setLoading(false);
+      }}
+      className="mx-4 mt-4 flex w-[calc(100%-2rem)] items-center gap-3 rounded-xl bg-blue-600 px-4 py-3 text-left text-white disabled:opacity-60"
     >
       <span className="text-xl">🔔</span>
-      <span className="flex-1 text-sm font-medium">Enable alert notifications</span>
-      <span className="text-sm">Turn on →</span>
+      <span className="flex-1 text-sm font-medium">
+        {loading ? 'Enabling…' : 'Enable alert notifications'}
+      </span>
+      {!loading && <span className="text-sm">Turn on →</span>}
     </button>
   );
 }
