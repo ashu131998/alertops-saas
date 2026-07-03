@@ -35,7 +35,8 @@ export class AuthService {
     if (existing) throw AppError.conflict('Email already registered');
 
     const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
-    const user = await this.repo.createUser({ ...dto, passwordHash });
+    const { password: _pw, ...userFields } = dto;
+    const user = await this.repo.createUser({ ...userFields, passwordHash });
     const tokens = this.generateTokens(user);
 
     await this.repo.createSession({
