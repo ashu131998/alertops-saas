@@ -20,6 +20,10 @@ const takeActionSchema = z.object({
   comment: z.string().max(1000).optional(),
 });
 
+const respondSchema = z.object({
+  optionId: z.string().min(1),
+});
+
 const repo = new AlertRepository(prisma);
 const service = new AlertService(repo);
 const controller = new AlertController(service);
@@ -34,3 +38,4 @@ alertRouter.patch('/read-all', controller.markAllRead);
 alertRouter.get('/:id', controller.getOne);
 alertRouter.post('/', authorize('ADMIN', 'SUPERVISOR'), validate(createAlertSchema), controller.create);
 alertRouter.post('/:id/actions', validate(takeActionSchema), controller.takeAction);
+alertRouter.post('/:id/respond', validate(respondSchema), controller.respond);

@@ -18,6 +18,9 @@ const envSchema = z.object({
   EXPO_ACCESS_TOKEN: z.string().optional(),
   // Shared secret for the ESP-IoT query-api bridge (worker sync + alert notify).
   INTEGRATION_API_KEY: z.string().min(16).optional(),
+  // Reverse callback: where to relay a worker's interactive reply back to the
+  // ESP-IoT query-api (uses the same INTEGRATION_API_KEY as the shared secret).
+  ESP_IOT_API_URL: z.string().default('https://esp-iot-factory.duckdns.org'),
 });
 
 const parsed = envSchema.safeParse(process.env);

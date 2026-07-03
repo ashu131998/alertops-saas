@@ -14,6 +14,13 @@ export const alertsApi = {
     const { data } = await api.post<{ data: AlertDetail }>(`/alerts/${id}/actions`, { actionType, comment });
     return data.data;
   },
+  respond: async (id: string, optionId: string): Promise<{ ok: boolean; message?: string; error?: string; alert: AlertDetail }> => {
+    const { data } = await api.post<{ data: { ok: boolean; message?: string; error?: string; alert: AlertDetail } }>(
+      `/alerts/${id}/respond`,
+      { optionId },
+    );
+    return data.data;
+  },
   getDashboardStats: async (): Promise<DashboardStats> => {
     const { data } = await api.get<{ data: DashboardStats }>('/alerts/stats');
     return data.data;

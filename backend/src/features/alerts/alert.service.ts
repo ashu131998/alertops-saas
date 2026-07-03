@@ -2,6 +2,7 @@ import { AlertStatus, ActionType } from '@prisma/client';
 import { AppError } from '../../core/errors/AppError';
 import { eventBus } from '../../core/events/EventBus';
 import { EventType } from '../../core/events/types';
+import { espBridge } from '../../infrastructure/esp/EspBridgeClient';
 import { AlertRepository } from './alert.repository';
 import type { CreateAlertDto, ListAlertsQuery, TakeActionDto, AvailableAction } from './alert.types';
 
@@ -196,5 +197,47 @@ export class AlertService {
 
   async markAllRead(factoryId: string) {
     return this.repo.markAllRead(factoryId);
+  }
+
+  /**
+   * A worker answers an interactive alert (downtime reason / config selection).
+   * The chosen option is validated against the alert metadata, recorded on the
+   * timeline, and relayed to the ESP-IoT query-api to apply on the dashboard.
+   */
+  async respondToAlert(alertId: string, factoryId: string, userId: string, optionId: string) {
+    const alert = await this.repo.findById(alertId, factoryId);
+    if (!alert) throw AppError.notFound('Alert not found');
+
+    const meta = (alert.metadata ?? {}) as any;
+    const options: Array<{ id: string; label: string }> = Array.isArray(meta.options) ? meta.options : [];
+    if (options.length === 0) throw AppError.badRequest('This alert has no reply options');
+    const chosen = options.find((o) => o.id === optionId);
+    if (!chosen) throw AppError.badRequest('Invalid option for this alert');
+
+    await this.repo.addTimelineEntry({
+      alertId,
+      eventType: 'WORKER_REPLY',
+      description: `Worker responded: ${chosen.label}`,
+      metadata: { optionId, kind: meta.kind ?? null },
+    });
+    // Mark handled without asserting the machine is fixed.
+    await this.repo.update(alertId, {
+      isRead: true,
+      ...(alert.status === AlertStatus.OPEN ? { status: AlertStatus.ACKNOWLEDGED } : {}),
+    });
+
+    const ctx = await this.repo.getReplyContext(userId, factoryId);
+    const relay = await espBridge.relayReply({
+      replyId: optionId,
+      externalWorkerId: ctx.userExternalId,
+      externalFactoryId: ctx.factoryExternalId,
+    });
+
+    return {
+      ok: relay.ok,
+      message: relay.message ?? `Selected: ${chosen.label}`,
+      error: relay.error,
+      alert: await this.repo.findById(alertId, factoryId),
+    };
   }
 }

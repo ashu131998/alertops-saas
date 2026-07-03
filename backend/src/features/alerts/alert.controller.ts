@@ -51,6 +51,20 @@ export class AlertController {
     }
   };
 
+  respond = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = await this.service.respondToAlert(
+        req.params.id,
+        req.user!.factoryId,
+        req.user!.id,
+        req.body.optionId,
+      );
+      res.json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  };
+
   getDashboardStats = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const stats = await this.service.getDashboardStats(req.user!.factoryId);

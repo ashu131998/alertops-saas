@@ -113,6 +113,15 @@ export class AlertRepository {
     return this.db.alertTimeline.create({ data });
   }
 
+  /** External identity of the responding worker + their factory, for the ESP-IoT relay. */
+  async getReplyContext(userId: string, factoryId: string) {
+    const [user, factory] = await Promise.all([
+      this.db.user.findUnique({ where: { id: userId }, select: { externalId: true } }),
+      this.db.factory.findUnique({ where: { id: factoryId }, select: { externalId: true } }),
+    ]);
+    return { userExternalId: user?.externalId ?? null, factoryExternalId: factory?.externalId ?? null };
+  }
+
   countByStatus(factoryId: string) {
     return this.db.alert.groupBy({
       by: ['status'],
