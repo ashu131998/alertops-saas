@@ -4,6 +4,15 @@ on:
   push:
     branches: [main]
 
+# Never let two deploys of main race each other on the box.
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+env:
+  BACKEND_IMAGE: ghcr.io/ashu131998/alertops-backend
+  WEB_IMAGE: ghcr.io/ashu131998/alertops-web
+
 jobs:
   test:
     name: Unit & service tests
@@ -63,35 +72,95 @@ jobs:
       - name: Run tests
         run: npm test
 
-  deploy:
-    name: Deploy AlertOps
+  build:
+    name: Build & push images
     needs: [test, test-web]
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    environment: .env
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
+            ${{ env.BACKEND_IMAGE }}:latest
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Build & push web
+        uses: docker/build-push-action@v6
+        with:
+          context: ./web
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
+            NEXT_PUBLIC_WS_URL=${{ secrets.NEXT_PUBLIC_WS_URL }}
+            NEXT_PUBLIC_VAPID_PUBLIC_KEY=${{ secrets.NEXT_PUBLIC_VAPID_PUBLIC_KEY }}
+          tags: |
+            ${{ env.WEB_IMAGE }}:${{ github.sha }}
+            ${{ env.WEB_IMAGE }}:latest
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+  deploy:
+    name: Deploy AlertOps
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: .env
+
+    steps:
       - name: Deploy to Hetzner
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          IMAGE_TAG: ${{ github.sha }}
         with:
           host: ${{ secrets.HETZNER_HOST }}
           username: root
           key: ${{ secrets.HETZNER_SSH_KEY }}
           script_stop: true
+          envs: IMAGE_TAG
           script: |
             set -e
             cd /root/alertops
 
-            # Pull latest code
+            # Keep the compose file (and .env.prod-adjacent config) in sync.
+            # No source build happens here anymore — only the YAML is needed.
             git pull origin main
 
-            # Rebuild and restart services (zero-downtime: backend stays up until new one healthy)
-            docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
+            # Pin the release to the exact images CI just built & pushed.
+            export IMAGE_TAG="$IMAGE_TAG"
 
-            # Wait for backend health
+            # Authenticate to GHCR to pull private images.
+            echo "${{ secrets.GHCR_PULL_TOKEN }}" \
+              | docker login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
+
+            # Pull pre-built images (no --build: no compilation on the VM).
+            docker compose -f docker-compose.prod.yml pull
+
+            # Roll out. Backend stays up until the new one is healthy.
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+
+            # Wait for backend health.
             echo "Waiting for backend to be healthy..."
             for i in $(seq 1 24); do
               if curl -sf http://localhost:4100/health > /dev/null; then
@@ -106,5 +175,8 @@ jobs:
               sleep 5
             done
 
-            echo "Deployment complete"
+            # Free disk from superseded images.
+            docker image prune -f
+
+            echo "Deployment complete (tag $IMAGE_TAG)"
             docker compose -f docker-compose.prod.yml ps
