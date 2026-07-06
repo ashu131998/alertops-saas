@@ -32,10 +32,13 @@ services:
 
   alertops-migrate:
     image: ghcr.io/ashu131998/alertops-backend:${IMAGE_TAG:-latest}
-    # Schema is managed with `db push` (no prisma/migrations history). Applies
-    # additive changes (new tables/columns/indexes) idempotently before the
-    # backend boots; runs to completion, then the backend starts.
-    command: sh -c "npx prisma db push --skip-generate"
+    # Versioned migrations (prisma/migrations). The existing prod DB was built
+    # with `db push`, so the first run hits P3005 (schema exists, no history);
+    # the fallback marks the 0_init baseline as already applied, then deploys.
+    # A genuinely failed migration still exits non-zero and blocks the backend.
+    command: >
+      sh -c "npx prisma migrate deploy ||
+             (npx prisma migrate resolve --applied 0_init && npx prisma migrate deploy)"
     env_file: ./backend/.env.prod
     networks:
       - esp-iot_default
