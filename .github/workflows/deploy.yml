@@ -5,8 +5,61 @@ on:
     branches: [main]
 
 jobs:
+  test:
+    name: Unit & service tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Run tests
+        run: npm test
+
+  test-web:
+    name: Web store tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
   deploy:
     name: Deploy AlertOps
+    needs: [test, test-web]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: .env
@@ -14,9 +67,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Syntax check
-        run: node --check backend/src/server.ts 2>/dev/null || true
 
       - name: Deploy to Hetzner
         uses: appleboy/ssh-action@v1.0.3
