@@ -1,3 +1,9 @@
+// ⚠️ DEPRECATED: this Expo app is superseded by the PWA at /m (web/src/app/m).
+// It is not maintained and not built by CI. See mobile/DEPRECATED.md.
+console.warn(
+  '[DEPRECATED] Expo mobile app — use the PWA at /m (web/src/app/m). See mobile/DEPRECATED.md.',
+);
+
 const IS_DEV = process.env.APP_ENV !== 'production';
 
 // Android emulator reaches Mac localhost via 10.0.2.2

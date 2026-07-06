@@ -1,13 +1,17 @@
 {
   "name": "industrial-saas-mobile",
   "version": "1.0.0",
+  "private": true,
+  "deprecated": "Deprecated 2026-07-06 — superseded by the PWA at /m in the web app (web/src/app/m). See mobile/DEPRECATED.md. Not maintained; not built by CI.",
+  "description": "DEPRECATED Expo alert client — replaced by the PWA at /m (web/src/app/m). See DEPRECATED.md.",
   "main": "expo-router/entry",
   "scripts": {
-    "start": "expo start",
-    "android": "expo run:android",
-    "ios": "expo run:ios",
-    "build:preview": "eas build --profile preview",
-    "build:production": "eas build --profile production",
+    "predeprecation-notice": "echo '⚠️  DEPRECATED: this Expo app is replaced by the PWA at /m (web/src/app/m). See mobile/DEPRECATED.md.'",
+    "start": "npm run predeprecation-notice && expo start",
+    "android": "npm run predeprecation-notice && expo run:android",
+    "ios": "npm run predeprecation-notice && expo run:ios",
+    "build:preview": "npm run predeprecation-notice && eas build --profile preview",
+    "build:production": "npm run predeprecation-notice && eas build --profile production",
     "lint": "eslint . --ext .ts,.tsx",
     "typecheck": "tsc --noEmit"
   },
