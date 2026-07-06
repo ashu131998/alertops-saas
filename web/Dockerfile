@@ -7,6 +7,9 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
 ENV NEXT_PUBLIC_VAPID_PUBLIC_KEY=$NEXT_PUBLIC_VAPID_PUBLIC_KEY
 COPY package.json package-lock.json* ./
+# Lock file is generated with npm 11; pin it so the image build resolves the
+# dependency tree identically to CI and local dev (npm 10 rejects it).
+RUN npm install -g npm@11.12.1
 RUN npm ci
 COPY . .
 RUN npm run build
