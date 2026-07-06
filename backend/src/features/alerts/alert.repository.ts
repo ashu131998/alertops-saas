@@ -1,6 +1,10 @@
 import { PrismaClient, AlertStatus, AlertSeverity, Prisma } from '@prisma/client';
 import type { ListAlertsQuery } from './alert.types';
 
+// Either the base client or an interactive-transaction client, so writes can be
+// enlisted in the same transaction as the outbox enqueue.
+type DbClient = PrismaClient | Prisma.TransactionClient;
+
 const alertWithRelations = Prisma.validator<Prisma.AlertDefaultArgs>()({
   include: {
     machine: { select: { id: true, name: true, location: true } },
@@ -70,15 +74,18 @@ export class AlertRepository {
     });
   }
 
-  create(data: {
-    title: string;
-    description: string;
-    severity: AlertSeverity;
-    machineId: string;
-    factoryId: string;
-    metadata?: Prisma.InputJsonValue;
-  }) {
-    return this.db.alert.create({
+  create(
+    data: {
+      title: string;
+      description: string;
+      severity: AlertSeverity;
+      machineId: string;
+      factoryId: string;
+      metadata?: Prisma.InputJsonValue;
+    },
+    client: DbClient = this.db,
+  ) {
+    return client.alert.create({
       data: {
         ...data,
         status: AlertStatus.OPEN,
@@ -93,8 +100,8 @@ export class AlertRepository {
     });
   }
 
-  update(id: string, data: Prisma.AlertUpdateInput) {
-    return this.db.alert.update({ where: { id }, data });
+  update(id: string, data: Prisma.AlertUpdateInput, client: DbClient = this.db) {
+    return client.alert.update({ where: { id }, data });
   }
 
   markRead(id: string) {
@@ -105,12 +112,15 @@ export class AlertRepository {
     return this.db.alert.updateMany({ where: { factoryId, isRead: false, deletedAt: null }, data: { isRead: true } });
   }
 
-  createAction(data: { alertId: string; userId: string; actionType: any; comment?: string }) {
-    return this.db.alertAction.create({ data });
+  createAction(data: { alertId: string; userId: string; actionType: any; comment?: string }, client: DbClient = this.db) {
+    return client.alertAction.create({ data });
   }
 
-  addTimelineEntry(data: { alertId: string; eventType: string; description: string; metadata?: Prisma.InputJsonValue }) {
-    return this.db.alertTimeline.create({ data });
+  addTimelineEntry(
+    data: { alertId: string; eventType: string; description: string; metadata?: Prisma.InputJsonValue },
+    client: DbClient = this.db,
+  ) {
+    return client.alertTimeline.create({ data });
   }
 
   /** External identity of the responding worker + their factory, for the ESP-IoT relay. */

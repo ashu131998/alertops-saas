@@ -1,4 +1,8 @@
-import { PrismaClient, MachineStatus, Prisma } from '@prisma/client';
+import { PrismaClient, MachineStatus, Machine, Prisma } from '@prisma/client';
+
+// Base client or an interactive-transaction client, so the status write can be
+// enlisted in the same transaction as the outbox enqueue.
+type DbClient = PrismaClient | Prisma.TransactionClient;
 
 export class MachineRepository {
   constructor(private readonly db: PrismaClient) {}
@@ -36,17 +40,18 @@ export class MachineRepository {
     return this.db.machine.create({ data });
   }
 
-  updateStatus(id: string, status: MachineStatus, reason?: string) {
-    return this.db.$transaction(async (tx) => {
-      const machine = await tx.machine.update({
-        where: { id },
-        data: { status, lastSeenAt: new Date() },
-      });
-      await tx.machineStatusHistory.create({
-        data: { machineId: id, status, reason },
-      });
-      return machine;
+  // When a transaction client is supplied the two writes join the caller's
+  // transaction (alongside the outbox enqueue); otherwise they run in their own.
+  async updateStatus(id: string, status: MachineStatus, reason?: string, client?: DbClient): Promise<Machine> {
+    if (!client) {
+      return this.db.$transaction((tx) => this.updateStatus(id, status, reason, tx));
+    }
+    const machine = await client.machine.update({
+      where: { id },
+      data: { status, lastSeenAt: new Date() },
     });
+    await client.machineStatusHistory.create({ data: { machineId: id, status, reason } });
+    return machine;
   }
 
   countByStatus(factoryId: string) {

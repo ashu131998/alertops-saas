@@ -2,21 +2,35 @@ import http from 'http';
 import { createApp } from './app';
 import { config } from './config';
 import { logger } from './config/logger';
-import { connectDatabase, disconnectDatabase } from './infrastructure/database/prisma';
+import { connectDatabase, disconnectDatabase, prisma } from './infrastructure/database/prisma';
 import { wsGateway } from './infrastructure/websocket/WebSocketGateway';
 import { registerWebSocketHandlers } from './core/events/handlers/WebSocketHandler';
 import { registerPushNotificationHandlers } from './core/events/handlers/PushNotificationHandler';
-import { registerAuditLogHandlers } from './core/events/handlers/AuditLogHandler';
 import { registerMachineDowntimeHandler } from './core/events/handlers/MachineDowntimeHandler';
+import { outbox } from './core/events/outbox/Outbox';
+import { outboxDispatcher } from './core/events/outbox/OutboxDispatcher';
+import { OutboxWorker } from './core/events/outbox/OutboxWorker';
 
 async function bootstrap() {
   await connectDatabase();
 
-  // Register event bus consumers
+  // Instant, best-effort live-view fan-out (WebSocket) runs on the in-process bus.
   registerWebSocketHandlers();
-  registerPushNotificationHandlers();
-  registerAuditLogHandlers();
-  registerMachineDowntimeHandler();
+
+  // Durable side effects (push, downtime-alert creation) run off the persisted
+  // outbox via the worker, so they survive crashes and are retried on failure.
+  registerPushNotificationHandlers(outboxDispatcher);
+  registerMachineDowntimeHandler(outboxDispatcher);
+
+  const outboxWorker = new OutboxWorker(prisma, outboxDispatcher, {
+    pollIntervalMs: config.OUTBOX_POLL_INTERVAL_MS,
+    batchSize: config.OUTBOX_BATCH_SIZE,
+    maxAttempts: config.OUTBOX_MAX_ATTEMPTS,
+    baseBackoffMs: config.OUTBOX_BASE_BACKOFF_MS,
+    maxBackoffMs: config.OUTBOX_MAX_BACKOFF_MS,
+  });
+  outbox.registerWorker(outboxWorker);
+  if (config.OUTBOX_ENABLED) outboxWorker.start();
 
   const app = createApp();
   const server = http.createServer(app);
@@ -33,6 +47,7 @@ async function bootstrap() {
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'Received shutdown signal');
     wsGateway.close();
+    await outboxWorker.stop();
     server.close(async () => {
       await disconnectDatabase();
       logger.info('Server shut down gracefully');

@@ -32,7 +32,10 @@ services:
 
   alertops-migrate:
     image: ghcr.io/ashu131998/alertops-backend:${IMAGE_TAG:-latest}
-    command: sh -c "npx prisma migrate deploy"
+    # Schema is managed with `db push` (no prisma/migrations history). Applies
+    # additive changes (new tables/columns/indexes) idempotently before the
+    # backend boots; runs to completion, then the backend starts.
+    command: sh -c "npx prisma db push --skip-generate"
     env_file: ./backend/.env.prod
     networks:
       - esp-iot_default

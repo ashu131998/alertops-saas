@@ -1,7 +1,9 @@
 import { MachineStatus } from '@prisma/client';
 import { AppError } from '../../core/errors/AppError';
 import { eventBus } from '../../core/events/EventBus';
+import { outbox } from '../../core/events/outbox/Outbox';
 import { EventType } from '../../core/events/types';
+import { prisma } from '../../infrastructure/database/prisma';
 import { MachineRepository } from './machine.repository';
 
 export class MachineService {
@@ -26,7 +28,6 @@ export class MachineService {
     if (!machine) throw AppError.notFound('Machine not found');
 
     const previousStatus = machine.status;
-    const updated = await this.repo.updateStatus(id, status, reason);
 
     const eventType =
       status === MachineStatus.ONLINE
@@ -35,8 +36,11 @@ export class MachineService {
           ? EventType.MACHINE_OFFLINE
           : EventType.MACHINE_STATUS_CHANGED;
 
-    await eventBus.publish(
-      eventBus.createEvent({
+    // Status write, history row and outbox event commit atomically, so a
+    // machine that went offline can never lose its downtime event to a crash.
+    const { updated, event } = await prisma.$transaction(async (tx) => {
+      const u = await this.repo.updateStatus(id, status, reason, tx);
+      const evt = eventBus.createEvent({
         eventType,
         factoryId,
         machineId: id,
@@ -47,9 +51,12 @@ export class MachineService {
           newStatus: status,
           reason,
         },
-      }),
-    );
+      });
+      await outbox.enqueue(evt, tx);
+      return { updated: u, event: evt };
+    });
 
+    outbox.dispatchInstant(event);
     return updated;
   }
 

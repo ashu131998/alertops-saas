@@ -1,7 +1,9 @@
 import { AlertStatus, ActionType } from '@prisma/client';
 import { AppError } from '../../core/errors/AppError';
 import { eventBus } from '../../core/events/EventBus';
+import { outbox } from '../../core/events/outbox/Outbox';
 import { EventType } from '../../core/events/types';
+import { prisma } from '../../infrastructure/database/prisma';
 import { espBridge } from '../../infrastructure/esp/EspBridgeClient';
 import { AlertRepository } from './alert.repository';
 import type { CreateAlertDto, ListAlertsQuery, TakeActionDto, AvailableAction } from './alert.types';
@@ -89,27 +91,31 @@ export class AlertService {
   }
 
   async createAlert(dto: CreateAlertDto) {
-    const alert = await this.repo.create({ ...dto, metadata: dto.metadata as any });
-
-    await eventBus.publish(
-      eventBus.createEvent({
+    // The alert row and its outbox event commit atomically, so a crash can never
+    // leave a created alert whose notification was never enqueued.
+    const { alert, event } = await prisma.$transaction(async (tx) => {
+      const created = await this.repo.create({ ...dto, metadata: dto.metadata as any }, tx);
+      const evt = eventBus.createEvent({
         eventType: EventType.ALERT_CREATED,
-        factoryId: alert.factoryId,
-        machineId: alert.machineId ?? undefined,
-        alertId: alert.id,
+        factoryId: created.factoryId,
+        machineId: created.machineId ?? undefined,
+        alertId: created.id,
         payload: {
-          alertId: alert.id,
-          title: alert.title,
-          description: alert.description,
-          severity: alert.severity,
-          status: alert.status,
-          machineId: alert.machineId,
-          machineName: (alert as any).machine?.name ?? '',
-          factoryId: alert.factoryId,
+          alertId: created.id,
+          title: created.title,
+          description: created.description,
+          severity: created.severity,
+          status: created.status,
+          machineId: created.machineId,
+          machineName: (created as any).machine?.name ?? '',
+          factoryId: created.factoryId,
         },
-      }),
-    );
+      });
+      await outbox.enqueue(evt, tx);
+      return { alert: created, event: evt };
+    });
 
+    outbox.dispatchInstant(event);
     return alert;
   }
 
@@ -127,48 +133,48 @@ export class AlertService {
 
     const previousStatus = alert.status;
 
-    if (targetStatus) {
-      await this.repo.update(alertId, {
-        status: targetStatus,
-        ...(targetStatus === AlertStatus.RESOLVED ? { resolvedAt: new Date() } : {}),
-      });
-    }
-
-    await this.repo.createAction({
-      alertId,
-      userId,
-      actionType: dto.actionType,
-      comment: dto.comment,
-    });
-
     const description = dto.comment
       ? `${dto.actionType} by user — "${dto.comment}"`
       : `${dto.actionType} by user`;
 
-    await this.repo.addTimelineEntry({
-      alertId,
-      eventType: dto.actionType,
-      description,
+    // Status change, action record, timeline entry and (when the status moved)
+    // the outbox event all commit atomically.
+    const event = await prisma.$transaction(async (tx) => {
+      if (targetStatus) {
+        await this.repo.update(
+          alertId,
+          {
+            status: targetStatus,
+            ...(targetStatus === AlertStatus.RESOLVED ? { resolvedAt: new Date() } : {}),
+          },
+          tx,
+        );
+      }
+
+      await this.repo.createAction({ alertId, userId, actionType: dto.actionType, comment: dto.comment }, tx);
+      await this.repo.addTimelineEntry({ alertId, eventType: dto.actionType, description }, tx);
+
+      if (!targetStatus) return null;
+
+      const evt = eventBus.createEvent({
+        eventType: EventType.ALERT_UPDATED,
+        factoryId,
+        machineId: alert.machineId ?? undefined,
+        alertId,
+        payload: {
+          alertId,
+          previousStatus,
+          newStatus: targetStatus,
+          actionType: dto.actionType,
+          updatedBy: userId,
+          comment: dto.comment,
+        },
+      });
+      await outbox.enqueue(evt, tx);
+      return evt;
     });
 
-    if (targetStatus) {
-      await eventBus.publish(
-        eventBus.createEvent({
-          eventType: EventType.ALERT_UPDATED,
-          factoryId,
-          machineId: alert.machineId ?? undefined,
-          alertId,
-          payload: {
-            alertId,
-            previousStatus,
-            newStatus: targetStatus,
-            actionType: dto.actionType,
-            updatedBy: userId,
-            comment: dto.comment,
-          },
-        }),
-      );
-    }
+    if (event) outbox.dispatchInstant(event);
 
     return this.repo.findById(alertId, factoryId);
   }

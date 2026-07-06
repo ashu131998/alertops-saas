@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import { PrismaClient, AlertSeverity, AlertStatus, Role } from '@prisma/client';
 import { AppError } from '../../core/errors/AppError';
 import { eventBus } from '../../core/events/EventBus';
+import { outbox } from '../../core/events/outbox/Outbox';
 import { EventType } from '../../core/events/types';
 import { logger } from '../../config/logger';
 
@@ -107,45 +108,51 @@ export class IntegrationService {
     });
     const targetUserIds = users.map((u) => u.id);
 
-    const alert = await this.db.alert.create({
-      data: {
-        title: dto.title,
-        description: dto.body,
-        severity: dto.severity,
-        status: AlertStatus.OPEN,
-        factoryId: factory.id,
-        externalMachineId: dto.externalMachineId ?? null,
-        externalMachineName: dto.externalMachineName ?? null,
-        targetUserIds,
-        metadata: (dto.data ?? {}) as any,
-        timeline: {
-          create: {
-            eventType: 'ALERT_CREATED',
-            description: `Alert created with severity ${dto.severity}`,
+    // Alert insert + outbox event commit atomically, so a bridge alert can never
+    // be created without its push being enqueued.
+    const { alert, event } = await this.db.$transaction(async (tx) => {
+      const created = await tx.alert.create({
+        data: {
+          title: dto.title,
+          description: dto.body,
+          severity: dto.severity,
+          status: AlertStatus.OPEN,
+          factoryId: factory.id,
+          externalMachineId: dto.externalMachineId ?? null,
+          externalMachineName: dto.externalMachineName ?? null,
+          targetUserIds,
+          metadata: (dto.data ?? {}) as any,
+          timeline: {
+            create: {
+              eventType: 'ALERT_CREATED',
+              description: `Alert created with severity ${dto.severity}`,
+            },
           },
         },
-      },
-    });
+      });
 
-    await eventBus.publish(
-      eventBus.createEvent({
+      const evt = eventBus.createEvent({
         eventType: EventType.ALERT_CREATED,
         factoryId: factory.id,
         machineId: undefined,
-        alertId: alert.id,
+        alertId: created.id,
         payload: {
-          alertId: alert.id,
-          title: alert.title,
-          description: alert.description,
-          severity: alert.severity,
-          status: alert.status,
+          alertId: created.id,
+          title: created.title,
+          description: created.description,
+          severity: created.severity,
+          status: created.status,
           machineId: null,
           machineName: dto.externalMachineName ?? '',
           factoryId: factory.id,
           targetUserIds,
         },
-      }),
-    );
+      });
+      await outbox.enqueue(evt, tx);
+      return { alert: created, event: evt };
+    });
+
+    outbox.dispatchInstant(event);
 
     return { alertId: alert.id, recipientCount: targetUserIds.length };
   }

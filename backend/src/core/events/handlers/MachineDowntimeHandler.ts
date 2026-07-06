@@ -2,7 +2,7 @@ import { AlertSeverity } from '@prisma/client';
 import { prisma } from '../../../infrastructure/database/prisma';
 import { AlertRepository } from '../../../features/alerts/alert.repository';
 import { AlertService } from '../../../features/alerts/alert.service';
-import { eventBus } from '../EventBus';
+import { OutboxDispatcher } from '../outbox/OutboxDispatcher';
 import { EventType } from '../types';
 import { logger } from '../../../config/logger';
 
@@ -13,10 +13,13 @@ const DOWNTIME_OPTIONS = [
   { id: 'not_planned', label: 'Not Planned' },
 ];
 
-export function registerMachineDowntimeHandler(): void {
+// Durable: a machine going offline must reliably create a downtime alert, so
+// this runs off the outbox worker. Idempotent — it skips creation when a
+// downtime alert is already open for the machine, so at-least-once is safe.
+export function registerMachineDowntimeHandler(dispatcher: OutboxDispatcher): void {
   const alertService = new AlertService(new AlertRepository(prisma));
 
-  eventBus.subscribe(EventType.MACHINE_OFFLINE, async (event) => {
+  dispatcher.subscribe(EventType.MACHINE_OFFLINE, async (event) => {
     const { machineId, factoryId } = event;
     const { machineName } = (event as any).payload as { machineName: string };
 

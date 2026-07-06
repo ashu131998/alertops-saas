@@ -27,10 +27,21 @@ jest.mock('../../../infrastructure/esp/EspBridgeClient', () => ({
   },
 }));
 
+// The service now enqueues events in the same transaction as the state change,
+// then hands off to the outbox. Run the transaction callback inline with a stub
+// tx client and assert against the outbox rather than a real DB.
+jest.mock('../../../infrastructure/database/prisma', () => ({
+  prisma: { $transaction: jest.fn(async (fn: (tx: unknown) => unknown) => fn({})) },
+}));
+
+jest.mock('../../../core/events/outbox/Outbox', () => ({
+  outbox: { enqueue: jest.fn().mockResolvedValue(undefined), dispatchInstant: jest.fn() },
+}));
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-import { eventBus } from '../../../core/events/EventBus';
 import { espBridge } from '../../../infrastructure/esp/EspBridgeClient';
+import { outbox } from '../../../core/events/outbox/Outbox';
 
 function makeAlert(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -181,19 +192,23 @@ describe('AlertService', () => {
       factoryId: 'factory-1',
     };
 
-    it('creates the alert via the repo', async () => {
+    it('creates the alert via the repo inside the transaction', async () => {
       await service.createAlert(dto);
-      expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({
-        title: 'New Alert',
-        factoryId: 'factory-1',
-      }));
+      expect(repo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'New Alert', factoryId: 'factory-1' }),
+        expect.anything(), // tx client
+      );
     });
 
-    it('publishes an ALERT_CREATED event after creation', async () => {
+    it('enqueues an ALERT_CREATED event then dispatches it after commit', async () => {
       await service.createAlert(dto);
-      expect(eventBus.publish).toHaveBeenCalledWith(expect.objectContaining({
-        eventId: 'test-event-id',
-      }));
+      expect(outbox.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({ eventType: 'ALERT_CREATED', eventId: 'test-event-id' }),
+        expect.anything(), // same tx as the alert insert
+      );
+      expect(outbox.dispatchInstant).toHaveBeenCalledWith(
+        expect.objectContaining({ eventId: 'test-event-id' }),
+      );
     });
 
     it('returns the created alert from the repo', async () => {
@@ -228,17 +243,19 @@ describe('AlertService', () => {
 
       it('calls repo.update with ACKNOWLEDGED status', async () => {
         await service.takeAction('alert-1', 'factory-1', 'user-1', { actionType: ActionType.ACKNOWLEDGE });
-        expect(repo.update).toHaveBeenCalledWith('alert-1', expect.objectContaining({
-          status: AlertStatus.ACKNOWLEDGED,
-        }));
+        expect(repo.update).toHaveBeenCalledWith(
+          'alert-1',
+          expect.objectContaining({ status: AlertStatus.ACKNOWLEDGED }),
+          expect.anything(), // tx client
+        );
       });
 
       it('records the action in the repo', async () => {
         await service.takeAction('alert-1', 'factory-1', 'user-1', { actionType: ActionType.ACKNOWLEDGE });
-        expect(repo.createAction).toHaveBeenCalledWith(expect.objectContaining({
-          alertId: 'alert-1',
-          actionType: ActionType.ACKNOWLEDGE,
-        }));
+        expect(repo.createAction).toHaveBeenCalledWith(
+          expect.objectContaining({ alertId: 'alert-1', actionType: ActionType.ACKNOWLEDGE }),
+          expect.anything(), // tx client
+        );
       });
 
       it('adds a timeline entry', async () => {
@@ -246,9 +263,13 @@ describe('AlertService', () => {
         expect(repo.addTimelineEntry).toHaveBeenCalled();
       });
 
-      it('publishes an ALERT_UPDATED event', async () => {
+      it('enqueues an ALERT_UPDATED event and dispatches it', async () => {
         await service.takeAction('alert-1', 'factory-1', 'user-1', { actionType: ActionType.ACKNOWLEDGE });
-        expect(eventBus.publish).toHaveBeenCalled();
+        expect(outbox.enqueue).toHaveBeenCalledWith(
+          expect.objectContaining({ eventType: 'ALERT_UPDATED' }),
+          expect.anything(),
+        );
+        expect(outbox.dispatchInstant).toHaveBeenCalled();
       });
     });
 
@@ -256,9 +277,11 @@ describe('AlertService', () => {
       it('updates status to IN_PROGRESS', async () => {
         (repo.findById as jest.Mock).mockResolvedValue(makeAlert({ status: AlertStatus.OPEN }));
         await service.takeAction('alert-1', 'factory-1', 'user-1', { actionType: ActionType.START_REPAIR });
-        expect(repo.update).toHaveBeenCalledWith('alert-1', expect.objectContaining({
-          status: AlertStatus.IN_PROGRESS,
-        }));
+        expect(repo.update).toHaveBeenCalledWith(
+          'alert-1',
+          expect.objectContaining({ status: AlertStatus.IN_PROGRESS }),
+          expect.anything(),
+        );
       });
     });
 
@@ -266,10 +289,11 @@ describe('AlertService', () => {
       it('updates status to RESOLVED and sets resolvedAt', async () => {
         (repo.findById as jest.Mock).mockResolvedValue(makeAlert({ status: AlertStatus.IN_PROGRESS }));
         await service.takeAction('alert-1', 'factory-1', 'user-1', { actionType: ActionType.RESOLVE });
-        expect(repo.update).toHaveBeenCalledWith('alert-1', expect.objectContaining({
-          status: AlertStatus.RESOLVED,
-          resolvedAt: expect.any(Date),
-        }));
+        expect(repo.update).toHaveBeenCalledWith(
+          'alert-1',
+          expect.objectContaining({ status: AlertStatus.RESOLVED, resolvedAt: expect.any(Date) }),
+          expect.anything(),
+        );
       });
     });
 
@@ -277,9 +301,11 @@ describe('AlertService', () => {
       it('updates status to CLOSED', async () => {
         (repo.findById as jest.Mock).mockResolvedValue(makeAlert({ status: AlertStatus.RESOLVED }));
         await service.takeAction('alert-1', 'factory-1', 'user-1', { actionType: ActionType.CLOSE });
-        expect(repo.update).toHaveBeenCalledWith('alert-1', expect.objectContaining({
-          status: AlertStatus.CLOSED,
-        }));
+        expect(repo.update).toHaveBeenCalledWith(
+          'alert-1',
+          expect.objectContaining({ status: AlertStatus.CLOSED }),
+          expect.anything(),
+        );
       });
     });
 

@@ -29,6 +29,15 @@ const envSchema = z.object({
   // Reverse callback: where to relay a worker's interactive reply back to the
   // ESP-IoT query-api (uses the same INTEGRATION_API_KEY as the shared secret).
   ESP_IOT_API_URL: z.string().default('https://esp-iot-factory.duckdns.org'),
+  // ── Transactional outbox worker ──
+  // Set OUTBOX_ENABLED=false to run the API without the background drainer
+  // (e.g. when a separate process owns delivery).
+  OUTBOX_ENABLED: z.string().optional().transform((v) => v !== 'false'),
+  OUTBOX_POLL_INTERVAL_MS: z.coerce.number().default(2000),
+  OUTBOX_BATCH_SIZE: z.coerce.number().default(50),
+  OUTBOX_MAX_ATTEMPTS: z.coerce.number().default(8),
+  OUTBOX_BASE_BACKOFF_MS: z.coerce.number().default(1000),
+  OUTBOX_MAX_BACKOFF_MS: z.coerce.number().default(300_000),
 });
 
 const parsed = envSchema.safeParse(process.env);

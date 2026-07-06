@@ -28,8 +28,8 @@ jest.mock('../../infrastructure/esp/EspBridgeClient', () => ({
   espBridge: { relayReply: jest.fn().mockResolvedValue({ ok: true }) },
 }));
 
-jest.mock('../../infrastructure/database/prisma', () => ({
-  prisma: {
+jest.mock('../../infrastructure/database/prisma', () => {
+  const prisma: any = {
     alert: {
       findMany:   jest.fn(),
       findFirst:  jest.fn(),
@@ -44,8 +44,19 @@ jest.mock('../../infrastructure/database/prisma', () => ({
     alertTimeline: { create: jest.fn() },
     user: { findFirst: jest.fn() },
     session: { create: jest.fn(), findUnique: jest.fn(), deleteMany: jest.fn() },
-    eventStore: { findMany: jest.fn().mockResolvedValue([]) },
-  },
+    eventStore: { findMany: jest.fn().mockResolvedValue([]), create: jest.fn() },
+  };
+  // Run interactive transactions inline against the same mock so repo writes
+  // enlisted in the tx (create/update/action/timeline + outbox enqueue) are
+  // observable on these same jest.fn()s.
+  prisma.$transaction = jest.fn(async (fn: (tx: unknown) => unknown) => fn(prisma));
+  return { prisma };
+});
+
+// The service enqueues to the outbox and fires the instant dispatch; both are
+// exercised by unit tests. Here we just need them inert.
+jest.mock('../../core/events/outbox/Outbox', () => ({
+  outbox: { enqueue: jest.fn().mockResolvedValue(undefined), dispatchInstant: jest.fn() },
 }));
 
 // ── Imports ───────────────────────────────────────────────────────────────────
